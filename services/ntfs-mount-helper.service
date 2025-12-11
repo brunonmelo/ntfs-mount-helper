@@ -1,0 +1,19 @@
+[Unit]
+Description=NTFS Mount Helper - Corrige montagens falhas
+After=local-fs.target
+Before=multi-user.target
+ConditionPathExists=/etc/fstab
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ntfs-mount-helper.sh
+RemainAfterExit=no
+StandardOutput=journal
+User=root
+
+# Configurações básicas de segurança
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
