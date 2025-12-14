@@ -5,13 +5,12 @@ Before=multi-user.target
 ConditionPathExists=/etc/fstab
 
 [Service]
-Type=oneshot
+Type=simple
 ExecStart=/usr/local/bin/ntfs-mount-helper.sh
 RemainAfterExit=no
 StandardOutput=journal
 User=root
 
-# Configurações básicas de segurança
 NoNewPrivileges=true
 PrivateTmp=true
 

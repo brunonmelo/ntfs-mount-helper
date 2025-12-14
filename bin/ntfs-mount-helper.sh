@@ -16,22 +16,16 @@ log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# Função para obter UUID do dispositivo
-get_uuid_from_device() {
-    local device=$1
-    blkid -s UUID -o value "$device" 2>/dev/null
-}
-
 # Função para verificar se dispositivo é NTFS
 is_ntfs_device() {
     local device=$1
     local fstype=$(blkid -s TYPE -o value "$device" 2>/dev/null)
-    [[ "$fstype" == "ntfs" ]] || [[ "$fstype" == "ntfs-3g" ]]
+    [[ "$fstype" == "ntfs" ]] || [[ "$fstype" == "ntfs-3g" ]] || [[ "$fstype" == "ntfs3" ]]
 }
 
 # Função para obter discos NTFS do fstab
 get_ntfs_fstab_entries() {
-    # Extrai entradas NTFS não comentadas do fstab
+    # Extrai entradas NTFS não comentadas do fstab (inclui ntfs3)
     grep -E '^\s*[^#].*ntfs' "$FSTAB_FILE" | awk '{print $1, $2}'
 }
 
@@ -48,11 +42,12 @@ check_dmesg_for_errors() {
     local device_name=$(basename "$device")
     
     # Verifica erros comuns no dmesg
+    # Se encontrar erros, retorna 0 (true)
     if $DMESG_CMD -T | tail -50 | grep -i "ntfs" | grep -i "$device_name" | grep -E -i "(error|fail|dirty|corrupt)"; then
-        return 1  # Encontrou erros
+        return 0  # Encontrou erros
     fi
     
-    return 0  # Sem erros encontrados
+    return 1  # Sem erros encontrados
 }
 
 # Função para desmontar com segurança
@@ -77,6 +72,9 @@ safe_umount() {
 # Função principal
 main() {
     log_message "=== Iniciando verificação de discos NTFS ==="
+    
+    # Aguardar um pouco mais para garantir montagens do systemd
+    sleep 5
     
     # Contadores
     local total_ntfs=0
@@ -115,7 +113,10 @@ main() {
             log_message "  ✓ Montado corretamente em $mount_point"
             
             # Verificar erros no dmesg mesmo estando montado
-            if check_dmesg_for_errors "$device"; then
+            if ! check_dmesg_for_errors "$device"; then
+                log_message "  ✓ Sem erros no dmesg, mantendo montado"
+                continue  # Tudo OK, próximo dispositivo
+            else
                 log_message "  ✗ Problemas detectados no dmesg para $device"
                 error_count=$((error_count + 1))
                 
@@ -123,23 +124,13 @@ main() {
                 if safe_umount "$mount_point"; then
                     log_message "  Desmontado para correção"
                 fi
-            else
-                continue  # Tudo OK, próximo dispositivo
             fi
         else
             log_message "  ✗ Não montado em $mount_point"
             error_count=$((error_count + 1))
         fi
         
-        # Verificar erros no dmesg
-        log_message "  Verificando logs do kernel..."
-        if check_dmesg_for_errors "$device"; then
-            log_message "    ✗ Erros encontrados no dmesg"
-        else
-            log_message "    ✓ Sem erros no dmesg"
-        fi
-        
-        # Aplicar ntfsfix
+        # Aplicar ntfsfix apenas se não estiver montado
         log_message "  Aplicando ntfsfix em $device..."
         
         # Tentar desmontar se estiver montado
@@ -157,19 +148,22 @@ main() {
         # Aguardar um momento
         sleep 2
         
-        # Tentar montar
+        # Tentar montar - usar as opções originais do fstab
         log_message "  Montando $mount_point..."
         if $MOUNT_COMMAND "$mount_point" 2>&1 | tee -a "$LOG_FILE"; then
             log_message "  ✓ Montagem bem-sucedida"
         else
             log_message "  ✗ Falha na montagem"
             
-            # Tentar montagem forçada para NTFS
-            log_message "  Tentando montagem forçada..."
-            if $MOUNT_COMMAND -t ntfs-3g -o force "$device" "$mount_point" 2>&1 | tee -a "$LOG_FILE"; then
-                log_message "  ✓ Montagem forçada bem-sucedida"
+            # Extrair tipo de filesystem do fstab
+            fs_type=$(grep "$mount_point" /etc/fstab | awk '{print $3}')
+            
+            # Tentar montagem com o tipo correto
+            log_message "  Tentando montagem com tipo $fs_type..."
+            if $MOUNT_COMMAND -t "$fs_type" "$device" "$mount_point" 2>&1 | tee -a "$LOG_FILE"; then
+                log_message "  ✓ Montagem com tipo $fs_type bem-sucedida"
             else
-                log_message "  ✗ Montagem forçada falhou"
+                log_message "  ✗ Todas as tentativas de montagem falharam"
             fi
         fi
         
