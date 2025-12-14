@@ -22,12 +22,12 @@ mkdir -p /var/log
 
 # 3. Copiar script principal
 echo "Copiando script principal..."
-cp ./bin/ntfs-mount-helper.sh /usr/local/bin/
+cp ./src/ntfs-mount-helper.sh /usr/local/bin/
 chmod 755 /usr/local/bin/ntfs-mount-helper.sh
 
 # 4. Configurar serviço systemd
 echo "Configurando serviço systemd..."
-cp ./services/ntfs-mount-helper.service /etc/systemd/system/
+cp ./systemd/ntfs-mount-helper.service /etc/systemd/system/
 
 # 5. Recarregar systemd
 echo "Recarregando systemd..."
