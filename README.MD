@@ -28,11 +28,11 @@ Este projeto resolve um problema comum em sistemas Linux com discos NTFS: ocasio
 
 ```
 ntfs-mount-helper/
-├── bin/
+├── src/
 │   └── ntfs-mount-helper.sh     # Script principal
-├── services/
+├── systemd/
 │   └── ntfs-mount-helper.service # Serviço systemd
-├── install.sh                   # Script de instalação
+├── install-ntfs-helper.sh       # Script de instalação
 └── README.md                    # Este arquivo
 ```
 
@@ -42,7 +42,7 @@ ntfs-mount-helper/
 
 2. **Execute o script de instalação como root:**
 ```bash
-sudo ./install.sh
+sudo ./install-ntfs-helper.sh
 ```
 
 O script de instalação irá:
@@ -102,8 +102,9 @@ sudo systemctl stop ntfs-mount-helper
 
 O serviço é configurado para executar:
 - **Após** as tentativas de montagem do systemd (`After=local-fs.target`)
+- **Após** o udev terminar de descobrir dispositivos (`After=systemd-udev-settle.service`)
 - **Antes** do sistema ficar pronto para o usuário (`Before=multi-user.target`)
-- Isto garante que o serviço execute logo após as tentativas de montagem do fstab, corrigindo quaisquer falhas antes que o usuário precise acessar os discos.
+- O script aguarda até 30 segundos (verificando a cada 2s) por dispositivos que ainda não estejam disponíveis, garantindo que discos com inicialização mais lenta também sejam corrigidos.
 
 ## 🔍 Logs e Diagnóstico
 
@@ -179,7 +180,7 @@ O log detalhado inclui:
 
 Para reinstalar:
 ```bash
-sudo ./install.sh
+sudo ./install-ntfs-helper.sh
 ```
 
 Para remover completamente:
