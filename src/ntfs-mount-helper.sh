@@ -50,6 +50,20 @@ check_dmesg_for_errors() {
     return 1  # Sem erros encontrados
 }
 
+# Função para resolver UUID/LABEL para caminho de dispositivo
+resolve_block_device() {
+    local dev=$1
+    if [[ "$dev" =~ ^UUID= ]]; then
+        local uuid=${dev#UUID=}
+        blkid -U "$uuid" 2>/dev/null || echo "$dev"
+    elif [[ "$dev" =~ ^LABEL= ]]; then
+        local label=${dev#LABEL=}
+        blkid -L "$label" 2>/dev/null || echo "$dev"
+    else
+        echo "$dev"
+    fi
+}
+
 # Função para desmontar com segurança
 safe_umount() {
     local mount_point=$1
@@ -85,19 +99,24 @@ main() {
     while read -r device mount_point; do
         ((total_ntfs++))
         
-        # Pular se device for UUID ou LABEL - converter para dispositivo
-        if [[ "$device" =~ ^UUID= ]]; then
-            uuid=${device#UUID=}
-            device=$(blkid -U "$uuid" 2>/dev/null || echo "$device")
-        elif [[ "$device" =~ ^LABEL= ]]; then
-            label=${device#LABEL=}
-            device=$(blkid -L "$label" 2>/dev/null || echo "$device")
-        fi
-        
-        # Verificar se o dispositivo existe
+        # Resolver UUID ou LABEL para caminho de dispositivo
+        original_device=$device
+        device=$(resolve_block_device "$original_device")
+
+        # Aguardar dispositivo aparecer (até 30s)
         if [[ ! -b "$device" ]]; then
-            log_message "AVISO: Dispositivo $device não encontrado, pulando..."
-            continue
+            log_message "Aguardando dispositivo $original_device..."
+            waited=0
+            while [[ ! -b "$device" && $waited -lt 30 ]]; do
+                sleep 2
+                waited=$((waited + 2))
+                device=$(resolve_block_device "$original_device")
+            done
+            if [[ ! -b "$device" ]]; then
+                log_message "AVISO: Dispositivo $original_device não encontrado após ${waited}s, pulando..."
+                continue
+            fi
+            log_message "Dispositivo $device encontrado após ${waited}s"
         fi
         
         # Verificar se é NTFS
